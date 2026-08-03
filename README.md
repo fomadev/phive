@@ -1,76 +1,98 @@
 # Phive (PHP Live Server)
 
-Phive is a professional Visual Studio Code extension designed to streamline PHP development by providing a modern, live-reloading environment. It eliminates the need for manual browser refreshes and complex server configurations, making it ideal for both local and cross-device testing.
+Phive is a professional Visual Studio Code extension designed to streamline PHP development by providing a modern, live-reloading environment. It eliminates manual browser refreshes and complex server configurations, making it ideal for both local development and cross-device network testing.
 
-## Core Features
+For complete technical documentation, architecture deep-dives, execution flow diagrams, and troubleshooting guides, please refer to the official [DOCUMENTATION.md](DOCUMENTATION.md).
 
-- **Instant PHP Server**: Launch a built-in PHP server instance directly from your workspace with a single click.
-- **Smart Live Reloading**: Automatically refreshes connected browsers (desktop and mobile) upon saving `.php`, `.html`, `.css`, `.js`, or `.json` files.
-- **Environment Aware (.env Reload)**: Automatically restarts the background PHP process when editing `.env` or environment configuration files, ensuring fresh environment variables are loaded seamlessly.
-- **Configurable Reload Delay**: Avoids premature browser refreshes on heavy asset compilation or slow file writes by adding an adjustable delay.
-- **Flexible Path Exclusion**: Skip live-reload processing for specified folders (like cache, vendors, or log directories) to stop redundant and performance-heavy browser refreshes.
-- **Port Conflict Resolution**: Automatically detects if port 8000 or the WebSocket port is occupied by another application and switches to the next available port, preventing environment crashes.
-- **Network Sharing**: Automatically detects your local IPv4 address, allowing seamless testing on mobile devices or tablets connected to the same network.
-- **Integrated Request Logging**: Real-time output channel providing detailed logs of incoming HTTP requests and server status.
-- **Multi-root Workspace Support**: Intelligent folder selection for developers working on multiple projects simultaneously.
-- **Customizable PHP Path**: Support for custom PHP binary locations, ensuring compatibility with XAMPP, WAMP, Laragon, or standalone PHP installations.
-- **Automated Routing**: Generates a temporary, hidden router script to handle asset serving and WebSocket injection without polluting your project structure.
+---
 
-## Requirements
+## Key Features
 
-- **PHP**: PHP must be installed on your system.
-- **Environment**: By default, the extension expects the `php` executable to be in your system's PATH.
+* **Instant PHP Server**: Launch a built-in PHP CLI web server instance directly from your workspace with a single click.
+* **Smart Live Reloading**: Automatically refreshes connected browsers across desktop and mobile devices upon saving `.php`, `.html`, `.css`, `.js`, or `.json` files.
+* **Environment Aware (.env Hot Restart)**: Automatically restarts the background PHP process when editing `.env` or environment configuration files, ensuring updated environment variables are instantly active.
+* **Debounced Browser Reload**: Debounces rapid consecutive file saves according to a configurable delay (`phive.reloadDelay`).
+* **Flexible Path Exclusion**: Skips live-reload processing for configured folder segments (`phive.ignorePaths` like `node_modules`, `.git`, `vendor`, or `cache`) to prevent superfluous refreshes.
+* **Port Conflict Resolution**: Automatically detects port collisions on HTTP (port 8000) and WebSocket (port 9001) interfaces, falling back to the next available sequential ports.
+* **Network & Mobile Sharing**: Automatically resolves local IPv4 addresses, allowing cross-device testing on mobile phones and tablets connected to the same network.
+* **Integrated Request Logging**: Real-time output channel providing detailed logs of incoming HTTP requests, status codes, and server execution events.
+* **Automated Router Injection**: Dynamically generates and manages a temporary router script (`.phive_router.php`) to handle asset serving and WebSocket injection while hiding the router from the file explorer.
 
-## Installation
+---
 
-1. Open Visual Studio Code.
-2. Navigate to the Extensions view (`Ctrl+Shift+X`).
-3. Search for `Phive` and click Install.
+## Full Documentation
 
-## Configuration
+For in-depth guides and technical details, visit [DOCUMENTATION.md](DOCUMENTATION.md):
 
-Phive provides the following configuration options through VS Code Settings (`Ctrl+,`):
+* **[Section 1: Introduction and Overview](DOCUMENTATION.md#1-introduction-and-overview)**
+* **[Section 2: Key Features in Version 1.1.5](DOCUMENTATION.md#2-key-features-in-version-115)**
+* **[Section 3: System Requirements & Prerequisites](DOCUMENTATION.md#3-system-requirements-and-prerequisites)**
+* **[Section 4: Installation & Setup](DOCUMENTATION.md#4-installation-and-setup)**
+* **[Section 5: Quick Start and Daily Usage](DOCUMENTATION.md#5-quick-start-and-daily-usage)**
+* **[Section 6: Configuration Reference](DOCUMENTATION.md#6-configuration-reference)**
+* **[Section 7: Architecture and Technical Deep-Dive](DOCUMENTATION.md#7-architecture-and-technical-deep-dive)**
+* **[Section 8: Detailed Execution Workflows](DOCUMENTATION.md#8-detailed-execution-workflows)**
+* **[Section 9: Integrated Request Logging](DOCUMENTATION.md#9-integrated-request-logging)**
+* **[Section 10: Troubleshooting and Common Issues](DOCUMENTATION.md#10-troubleshooting-and-common-issues)**
+* **[Section 11: Licensing, Governance, and Contributions](DOCUMENTATION.md#11-licensing-governance-and-contributions)**
 
-- `phive.phpPath`: Specifies the absolute path to the PHP executable. Set this if `php` is not in your system PATH (e.g., `C:\xampp\php\php.exe` on Windows).
+---
 
-- `phive.port`: Specifies the preferred local port for the PHP server instance (Default: `8000`). Ideal for restrictive local network environments or static proxy routing rules.
+## Quick Start
 
-- `phive.reloadDelay`: Specifies the delay in milliseconds before triggering a browser reload (Default: `100`). Perfect if your environment or builder needs a moment to fully compile assets before refreshing.
+1. **Open Workspace**: Open a PHP project folder in Visual Studio Code.
+2. **Start Server**: Click **Phive: Go Live** in the Status Bar (bottom right) or open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run `Phive: Start PHP Server`.
+3. **Develop**: Phive automatically opens your default browser to `http://localhost:8000`. Changes saved to supported files trigger immediate browser refreshes.
+4. **Stop Server**: Click the active server status in the Status Bar or run `Phive: Stop PHP Server`.
 
-- `phive.ignorePaths`: An array of folder names or path segments to ignore (Default: `["node_modules", ".git", "vendor", "cache"]`). Any saved files located within these paths will completely bypass the live reload engine.
+---
 
-## Usage
+## Configuration Reference Overview
 
-1. **Start the Server**: Open a PHP project folder. Click the **Phive: Go Live** button in the Status Bar (bottom right) or use the Command Palette (`Ctrl+Shift+P` -> `Phive: Start PHP Server`).
-2. **Select Folder**: If using a multi-root workspace, select the specific project folder you wish to serve.
-3. **Development**: The extension will automatically open your default browser. Any changes saved to supported files will trigger an immediate reload across all connected devices.
-4. **Stop the Server**: Click the active server info in the Status Bar or use the `Phive: Stop PHP Server` command.
+Configure Phive settings in VS Code (`Ctrl+,` searching for `Phive`):
+
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| `phive.phpPath` | `"php"` | Path to the PHP executable (e.g., `C:\php\php.exe`). |
+| `phive.port` | `8000` | Preferred local port for the PHP server instance. |
+| `phive.reloadDelay` | `100` | Delay in milliseconds before triggering a browser refresh. |
+| `phive.ignorePaths` | `["node_modules", ".git", "vendor", "cache"]` | Folders excluded from triggering live reloads. |
+
+For detailed setting explanations, view the [Configuration Reference in DOCUMENTATION.md](DOCUMENTATION.md#6-configuration-reference).
+
+---
 
 ## Technical Overview
 
-Phive utilizes a WebSocket-based architecture (`ws` library) to maintain a persistent connection between the server and the client. During execution, it injects a lightweight JavaScript client into the PHP output stream via a temporary router file (`.phive_router.php`). This router file is automatically hidden from the VS Code File Explorer and securely deleted upon server termination to maintain workspace cleanliness.
+Phive uses a WebSocket-based architecture (`ws`) to maintain a persistent connection with client browsers. During execution, Phive injects a lightweight client JavaScript snippet into the PHP HTML stream using a temporary router script (`.phive_router.php`). The router file is hidden from the VS Code explorer and automatically deleted upon server termination.
 
-## Changelog
+---
 
-### v1.1.5
-- **Hot Server Restart for .env Files**: Added automatic PHP process restart when modifying `.env` or related environment files to force PHP to load updated configuration values.
-- **Seamless Browser Refresh**: Triggers an automated client reload right after the PHP server completes its restart cycle.
+## Recent Changelog
 
-### v1.1.4
-- **Path Exclusion Filtering**: Added the `phive.ignorePaths` configuration array to easily mute unneeded folder segments.
-- **Performance Boost**: Implemented micro-second early exits when processing saved files within ignored directories to prevent background system lag.
+### Version 1.1.5
+* **Hot Server Restart for .env Files**: Added automatic PHP process restart when modifying `.env` or related environment files to force PHP to load updated configuration values.
+* **Seamless Browser Refresh**: Triggers an automated client reload right after the PHP server completes its restart cycle.
 
-### v1.1.3
-- **Live Reload Optimization**: Added the `phive.reloadDelay` configuration to prevent early browser refreshes during heavy file operations or slow disk writes.
-- **Debounced Refresh**: Merged consecutive file-save events into a single reload event to reduce browser lag.
+### Version 1.1.4
+* **Path Exclusion Filtering**: Added the `phive.ignorePaths` configuration array to ignore designated folder segments.
+* **Performance Optimization**: Implemented early exit checks when processing saved files within ignored directories.
+
+### Version 1.1.3
+* **Live Reload Optimization**: Added `phive.reloadDelay` configuration to prevent premature refreshes during heavy file writes.
+* **Debounced Refresh**: Merged consecutive file-save events into a single reload event.
+
+---
 
 ## Contributing
 
-Contributions must comply with the official project guidelines. Please read the [CONTRIBUTING.md](CONTRIBUTING.md) file before submitting any code, issues, or pull requests.
+Contributions must comply with official project governance. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting code, issues, or pull requests.
+
+---
 
 ## License
 
-This project is licensed under the **FomaDev Public License (FPL)**. Commercial distribution, redistribution of modified source code, or hosting derivative services based on this engine requires an explicit paid license. See the [LICENSE](LICENSE) file for full legal terms and conditions.
+This project is licensed under the **FomaDev Public License (FPL)**. Commercial distribution, resale, or hosting derivative services based on this engine requires an explicit paid license. See [LICENSE](LICENSE) for full terms.
 
 ---
 Developed by **FomaDev**
