@@ -2,7 +2,7 @@
   "name": "phive",
   "displayName": "Phive (PHP Live Server)",
   "description": "Local PHP server with automatic port conflict resolution, live reloading, and WiFi network sharing.",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "publisher": "fomadev",
   "icon": "logo.png",
   "repository": {

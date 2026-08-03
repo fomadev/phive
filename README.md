@@ -6,6 +6,7 @@ Phive is a professional Visual Studio Code extension designed to streamline PHP 
 
 - **Instant PHP Server**: Launch a built-in PHP server instance directly from your workspace with a single click.
 - **Smart Live Reloading**: Automatically refreshes connected browsers (desktop and mobile) upon saving `.php`, `.html`, `.css`, `.js`, or `.json` files.
+- **Environment Aware (.env Reload)**: Automatically restarts the background PHP process when editing `.env` or environment configuration files, ensuring fresh environment variables are loaded seamlessly.
 - **Configurable Reload Delay**: Avoids premature browser refreshes on heavy asset compilation or slow file writes by adding an adjustable delay.
 - **Flexible Path Exclusion**: Skip live-reload processing for specified folders (like cache, vendors, or log directories) to stop redundant and performance-heavy browser refreshes.
 - **Port Conflict Resolution**: Automatically detects if port 8000 or the WebSocket port is occupied by another application and switches to the next available port, preventing environment crashes.
@@ -50,6 +51,10 @@ Phive provides the following configuration options through VS Code Settings (`Ct
 Phive utilizes a WebSocket-based architecture (`ws` library) to maintain a persistent connection between the server and the client. During execution, it injects a lightweight JavaScript client into the PHP output stream via a temporary router file (`.phive_router.php`). This router file is automatically hidden from the VS Code File Explorer and securely deleted upon server termination to maintain workspace cleanliness.
 
 ## Changelog
+
+### v1.1.5
+- **Hot Server Restart for .env Files**: Added automatic PHP process restart when modifying `.env` or related environment files to force PHP to load updated configuration values.
+- **Seamless Browser Refresh**: Triggers an automated client reload right after the PHP server completes its restart cycle.
 
 ### v1.1.4
 - **Path Exclusion Filtering**: Added the `phive.ignorePaths` configuration array to easily mute unneeded folder segments.
