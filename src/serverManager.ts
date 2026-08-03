@@ -9,6 +9,15 @@ export class PHPStackManager {
     private _routerPath: string | undefined;
     private _requestCount = 0;
 
+    // Métadonnées de session conservées pour permettre le redémarrage à chaud (v1.1.5)
+    private _lastServerParams: {
+        rootPath: string;
+        host: string;
+        port: number;
+        wsPort: number;
+        ip: string;
+    } | undefined;
+
     constructor() {
         this._outputChannel = vscode.window.createOutputChannel("Phive Server Logs");
     }
@@ -17,7 +26,10 @@ export class PHPStackManager {
      * Démarre le serveur PHP avec un routeur personnalisé et le binaire configuré
      */
     public async start(rootPath: string, host: string, port: number, wsPort: number, ip: string) {
-        this.stop(); 
+        // Enregistrer les paramètres de lancement actuels pour un éventuel restart (.env)
+        this._lastServerParams = { rootPath, host, port, wsPort, ip };
+
+        this.stopProcessOnly(); 
         this._requestCount = 0;
 
         // 1. Récupérer le chemin PHP depuis la configuration
@@ -117,7 +129,34 @@ export class PHPStackManager {
     }
 
     /**
-     * Arrête le processus PHP et nettoie
+     * Redémarre à chaud le serveur PHP (Utile pour recharger les fichiers d'environnement .env)
+     */
+    public async restartServer() {
+        if (!this._lastServerParams) {
+            return;
+        }
+
+        const { rootPath, host, port, wsPort, ip } = this._lastServerParams;
+        
+        // Arrêt du processus sans afficher le message de fermeture définitive
+        this.stopProcessOnly();
+
+        // Relance avec les mêmes paramètres de session
+        await this.start(rootPath, host, port, wsPort, ip);
+    }
+
+    /**
+     * Arrête uniquement le processus enfant PHP en arrière-plan sans déclencher de notification
+     */
+    private stopProcessOnly() {
+        if (this._process) {
+            this._process.kill();
+            this._process = undefined;
+        }
+    }
+
+    /**
+     * Arrête le processus PHP, notifie l'utilisateur et nettoie les fichiers temporaires
      */
     public stop() {
         if (this._process) {
@@ -125,6 +164,7 @@ export class PHPStackManager {
             this._process = undefined;
             vscode.window.showInformationMessage("Phive server stopped.");
         }
+        this._lastServerParams = undefined;
         this._cleanup();
     }
 
