@@ -1,4 +1,4 @@
-# Phive (PHP Live Server) v1.1.5: Complete Technical Documentation and User Guide
+# Phive (PHP Live Server) v1.1.6: Complete Technical Documentation and User Guide
 
 ---
 
@@ -6,11 +6,12 @@
 
 Phive (PHP Live Server) is a high-performance Visual Studio Code extension developed by FomaDev. Designed to modernize the local PHP development workflow, Phive eliminates manual browser refreshes, complex server installations, and cumbersome web host configurations.
 
-By combining the built-in PHP CLI web server with a WebSocket-based live-reloading engine, Phive provides instantaneous feedback during development across both local machines and network-connected devices (such as mobile phones and tablets).
+By combining the built-in PHP CLI web server with a WebSocket-based live-reloading engine and theme-aware output channel log colorization, Phive provides instantaneous feedback and real-time visual telemetry during development across both local machines and network-connected devices (such as mobile phones and tablets).
 
 ### Core Objectives
 * Provide zero-configuration, single-click PHP web server execution within VS Code.
 * Implement robust live reloading for PHP, HTML, CSS, JavaScript, and JSON assets.
+* Deliver native, theme-adaptive OutputChannel log colorization with HTTP status code classification.
 * Support instant environment variable loading by automatically restarting the underlying PHP process when environment configuration files change.
 * Eliminate port collisions through dynamic port detection and allocation.
 * Enable seamless cross-device testing over local Wi-Fi and Ethernet networks.
@@ -18,11 +19,26 @@ By combining the built-in PHP CLI web server with a WebSocket-based live-reloadi
 
 ---
 
-## 2. Key Features in Version 1.1.5
+## 2. Key Features in Version 1.1.6
 
-Version 1.1.5 introduces significant architecture and usability improvements:
+Version 1.1.6 introduces major developer experience (DX) enhancements around server logging, status code parsing, and syntax colorization:
 
-### Environment File Hot-Restart Engine
+### Native OutputChannel Syntax Highlighting (`"log"`)
+Phive now initializes its dedicated VS Code OutputChannel using the native `"log"` language identifier grammar:
+`vscode.window.createOutputChannel("Phive Server Logs", "log")`.
+This enables VS Code's built-in log syntax highlighter to dynamically colorize output tags and status lines across both **Light** and **Dark** editor themes without third-party extensions.
+
+### HTTP Status Code Parsing & Colorization
+Incoming log streams from the PHP CLI development server stderr output are intercepted and analyzed in real time. Phive extracts status codes (2xx, 3xx, 4xx, 5xx) via regular expression matching and formats each entry with standard severity prefixes and status descriptors:
+* **2xx (Success)**: Formatted as `[INFO] [200 OK]` — renders in **Green** in VS Code log grammar.
+* **3xx (Redirection)**: Formatted as `[WARN] [302 REDIRECT]` — renders in **Yellow**.
+* **4xx (Client Error)**: Formatted as `[WARN] [404 NOT FOUND]` — renders in **Yellow/Orange**.
+* **5xx (Server Error)**: Formatted as `[ERROR] [500 SERVER ERROR]` — renders in **Red**.
+
+### Structured Request Indexing & Telemetry
+Every incoming HTTP request is tagged with a sequential request counter (`[Req #N]`), accurate local timestamp, and structured tag (`[INFO]`, `[DEBUG]`, `[WARN]`, or `[ERROR]`), allowing developers to effortlessly trace server activity.
+
+### Environment File Hot-Restart Engine (v1.1.5)
 Modifying environment files (such as `.env`, `.env.local`, or `.env.production`) automatically triggers a graceful background restart of the PHP executable. This guarantees that updated environment variables are instantly accessible to your PHP application without requiring manual server restarts. Once restarted, all connected web clients are refreshed automatically.
 
 ### Microsecond Path Exclusion Filtering
@@ -64,7 +80,7 @@ Before utilizing Phive, ensure your development environment satisfies the follow
 If installing offline or testing pre-release builds:
 1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
 2. Select **Extensions: Install from VSIX...**.
-3. Select the `.vsix` package file (e.g., `phive-1.1.5.vsix`) and click **Install**.
+3. Select the `.vsix` package file (e.g., `phive-1.1.6.vsix`) and click **Install**.
 
 ---
 
@@ -142,10 +158,12 @@ Phive is built on a modular TypeScript architecture consisting of four core modu
 
 #### `src/serverManager.ts` (`PHPStackManager` Class)
 * Spawns and manages the underlying PHP CLI child process (`child_process.spawn`).
+* **Output Channel Initialization (v1.1.6)**: Instantiates `vscode.window.createOutputChannel("Phive Server Logs", "log")` to enable native log language syntax highlighting.
+* **HTTP Log Formatting Engine (v1.1.6)**: Implements `formatHttpLog(rawLog, time)` to analyze stderr data, extract HTTP status codes with regex `/\b([1-5]\d\d)\b/`, and prefix entries with colorized tags (`[200 OK]`, `[302 REDIRECT]`, `[404 NOT FOUND]`, `[500 SERVER ERROR]`).
+* Tracks incoming connection counts via `_requestCount` and formats initial request logs (`[INFO] [Req #1] ...`).
 * Generates a temporary router script (`.phive_router.php`) in the project root.
 * Automatically updates VS Code's `files.exclude` workspace settings to hide `.phive_router.php` from the file explorer.
 * Intercepts PHP document output and injects client-side WebSocket live-reload JavaScript prior to the closing `</body>` tag.
-* Captures stdout and stderr streams, formatting incoming HTTP logs in the dedicated "Phive Server Logs" output channel.
 * Maintains session parameters (`_lastServerParams`) to support seamless hot-restarts without resetting ports.
 
 #### `src/liveReload.ts` (`LiveReloadServer` Class)
@@ -225,14 +243,62 @@ When `phive.stopServer` is triggered or VS Code is closed:
 
 ---
 
-## 9. Integrated Request Logging
+## 9. Integrated Request Logging & HTTP Status Colorization
 
-Phive includes a dedicated logging interface to monitor server traffic and output messages:
+Phive includes a dedicated output log channel with theme-aware syntax colorization and automated HTTP status parsing:
 
-* Access the log window by selecting **View > Output** in VS Code, then choosing **Phive Server Logs** from the channel dropdown.
-* Each incoming HTTP request captured from PHP stderr is formatted with a timestamp and request counter:
-  `[Req #12] 14:32:05 - [200]: GET /index.php`
-* PHP startup errors, missing binary alerts, and shutdown statuses are recorded in this channel.
+* Access the log window by selecting **View > Output** in VS Code, then choosing **Phive Server Logs** from the dropdown menu.
+* **Log Language Engine (v1.1.6)**: Built using `vscode.window.createOutputChannel("Phive Server Logs", "log")`, leveraging VS Code's native `log` syntax rules.
+
+### HTTP Status Code Formatting Rules
+
+| HTTP Status Range | Log Level Tag | Formatted Prefix Example | Native VS Code Log Color |
+| :--- | :--- | :--- | :--- |
+| **2xx (Success)** | `[INFO]` | `[INFO] [200 OK]` | **Green** |
+| **3xx (Redirection)** | `[WARN]` | `[WARN] [302 REDIRECT]` | **Yellow** |
+| **4xx (Client Error)** | `[WARN]` | `[WARN] [404 NOT FOUND]` | **Yellow / Orange** |
+| **5xx (Server Error)** | `[ERROR]` | `[ERROR] [500 SERVER ERROR]` | **Red** |
+| **Request Connection**| `[INFO]` | `[INFO] [Req #1]` | **Green / Info Blue** |
+| **Process Close** | `[DEBUG]` | `[DEBUG]` | **Dark / Muted Gray** |
+| **Server Lifecycle** | `[INFO] / [WARN]` | `[INFO] [Phive] Server started...` | **Theme Accent Color** |
+
+### Code Implementation (`src/serverManager.ts`)
+
+```typescript
+private formatHttpLog(rawLog: string, time: string): string {
+    const statusCodeMatch = rawLog.match(/\b([1-5]\d\d)\b/);
+    
+    if (statusCodeMatch) {
+        const statusCode = parseInt(statusCodeMatch[1], 10);
+
+        if (statusCode >= 200 && statusCode < 300) {
+            return `[INFO] [${statusCode} OK] ${time} - ${rawLog}`;
+        } else if (statusCode >= 300 && statusCode < 400) {
+            return `[WARN] [${statusCode} REDIRECT] ${time} - ${rawLog}`;
+        } else if (statusCode >= 400 && statusCode < 500) {
+            return `[WARN] [${statusCode} NOT FOUND] ${time} - ${rawLog}`;
+        } else if (statusCode >= 500) {
+            return `[ERROR] [${statusCode} SERVER ERROR] ${time} - ${rawLog}`;
+        }
+    }
+
+    return `[LOG] ${time} - ${rawLog}`;
+}
+```
+
+### Sample Output Channel Session
+
+```log
+[INFO] [Phive] Attempting to start using: php
+[INFO] [Phive] Server started: http://192.168.1.50:8000
+[INFO] [Req #1] 19:42:01 - 127.0.0.1:51234 Accepted
+[INFO] [200 OK] 19:42:01 - [200]: GET /index.php
+[INFO] [Req #2] 19:42:05 - 127.0.0.1:51240 Accepted
+[WARN] [404 NOT FOUND] 19:42:05 - [404]: GET /favicon.ico
+[INFO] [Req #3] 19:42:10 - 127.0.0.1:51248 Accepted
+[ERROR] [500 SERVER ERROR] 19:42:10 - [500]: GET /api/data.php - Fatal error: Uncaught Error...
+[WARN] [Phive] Server stopped (Code: 0)
+```
 
 ---
 
@@ -272,4 +338,4 @@ Contributions to Phive must comply with the rules outlined in `CONTRIBUTING.md`:
 
 ---
 
-Document generated for **Phive v1.1.5** by **FomaDev**.
+Document generated for **Phive v1.1.6** by **FomaDev**.
