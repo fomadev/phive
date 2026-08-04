@@ -19,7 +19,8 @@ export class PHPStackManager {
     } | undefined;
 
     constructor() {
-        this._outputChannel = vscode.window.createOutputChannel("Phive Server Logs");
+        // v1.1.6 : Utilisation de la grammaire "log" pour activer la coloration syntaxique native (Light/Dark mode)
+        this._outputChannel = vscode.window.createOutputChannel("Phive Server Logs", "log");
     }
 
     /**
@@ -38,7 +39,7 @@ export class PHPStackManager {
 
         this._outputChannel.clear();
         this._outputChannel.show();
-        this._outputChannel.appendLine(`[Phive] Attempting to start using: ${phpBinary}`);
+        this._outputChannel.appendLine(`[INFO] [Phive] Attempting to start using: ${phpBinary}`);
 
         // 2. Script JS à injecter (Live Reload)
         const injectionScript = `
@@ -95,26 +96,33 @@ export class PHPStackManager {
             cwd: rootPath
         });
 
-        this._outputChannel.appendLine(`[Phive] Server started: http://${ip}:${port}`);
+        this._outputChannel.appendLine(`[INFO] [Phive] Server started: http://${ip}:${port}`);
 
-        // 5. Gestion des logs et erreurs
+        // 5. Gestion des logs et erreurs (v1.1.6 : Formatage coloré selon le statut HTTP)
         this._process.stderr?.on('data', (data) => {
-            const logLine = data.toString();
-            if (logLine.includes('Accepted') || logLine.includes(']')) {
+            const rawLog = data.toString().trim();
+            if (!rawLog) return;
+
+            const time = new Date().toLocaleTimeString();
+
+            if (rawLog.includes('Accepted')) {
                 this._requestCount++;
-                const time = new Date().toLocaleTimeString();
-                this._outputChannel.appendLine(`[Req #${this._requestCount}] ${time} - ${logLine.trim()}`);
+                this._outputChannel.appendLine(`[INFO] [Req #${this._requestCount}] ${time} - ${rawLog}`);
+            } else if (rawLog.includes('Closing') || rawLog.includes('Closing')) {
+                this._outputChannel.appendLine(`[DEBUG] ${time} - ${rawLog}`);
             } else {
-                this._outputChannel.append(logLine);
+                // Analyse du code statut HTTP retourné par le serveur de dev PHP
+                const formattedLog = this.formatHttpLog(rawLog, time);
+                this._outputChannel.appendLine(formattedLog);
             }
         });
 
         this._process.stdout?.on('data', (data) => {
-            this._outputChannel.append(data.toString());
+            this._outputChannel.appendLine(`[INFO] ${data.toString().trim()}`);
         });
 
         this._process.on('close', (code) => {
-            this._outputChannel.appendLine(`[Phive] Server stopped (Code: ${code})`);
+            this._outputChannel.appendLine(`[WARN] [Phive] Server stopped (Code: ${code})`);
             this._cleanup();
         });
 
@@ -123,9 +131,35 @@ export class PHPStackManager {
                 ? `PHP executable not found at "${phpBinary}". Check your Phive settings.`
                 : `PHP Error: ${err.message}`;
             
+            this._outputChannel.appendLine(`[ERROR] ${errorMsg}`);
             vscode.window.showErrorMessage(errorMsg);
             this._cleanup();
         });
+    }
+
+    /**
+     * Formatage visuel des requêtes HTTP (v1.1.6)
+     * Ajoute des préfixes standardisés pris en charge par le moteur de coloration de VS Code.
+     */
+    private formatHttpLog(rawLog: string, time: string): string {
+        // Extraction du code HTTP (ex: 200, 404, 500)
+        const statusCodeMatch = rawLog.match(/\b([1-5]\d\d)\b/);
+        
+        if (statusCodeMatch) {
+            const statusCode = parseInt(statusCodeMatch[1], 10);
+
+            if (statusCode >= 200 && statusCode < 300) {
+                return `[INFO] [${statusCode} OK] ${time} - ${rawLog}`; // Vert en thème VS Code Log
+            } else if (statusCode >= 300 && statusCode < 400) {
+                return `[WARN] [${statusCode} REDIRECT] ${time} - ${rawLog}`; // Jaune
+            } else if (statusCode >= 400 && statusCode < 500) {
+                return `[WARN] [${statusCode} NOT FOUND] ${time} - ${rawLog}`; // Jaune / Orange
+            } else if (statusCode >= 500) {
+                return `[ERROR] [${statusCode} SERVER ERROR] ${time} - ${rawLog}`; // Rouge
+            }
+        }
+
+        return `[LOG] ${time} - ${rawLog}`;
     }
 
     /**
