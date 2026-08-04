@@ -18,6 +18,7 @@ For complete technical documentation, architecture deep-dives, execution flow di
 * **Port Conflict Resolution**: Automatically detects port collisions on HTTP (port 8000) and WebSocket (port 9001) interfaces, falling back to the next available sequential ports.
 * **Network & Mobile Sharing**: Automatically resolves local IPv4 addresses, allowing cross-device testing on mobile phones and tablets connected to the same network.
 * **Automated Router Injection**: Dynamically generates and manages a temporary router script (`.phive_router.php`) to handle asset serving and WebSocket injection while hiding the router from the file explorer.
+* **Modular Internals**: Server lifecycle, logging, router generation, and VS Code file-visibility handling are split into dedicated helpers for easier maintenance and evolution.
 
 ---
 
@@ -75,6 +76,7 @@ Phive uses a WebSocket-based architecture (`ws`) to maintain a persistent connec
 * **Native OutputChannel Syntax Highlighting**: Configured the VS Code output channel with language grammar identifier `"log"` for native, theme-adaptive syntax colorization across both Light and Dark themes.
 * **HTTP Status Code Parsing & Colorization**: Added intelligent regex parsing of PHP CLI server stderr output to format status codes (`[200 OK]`, `[302 REDIRECT]`, `[404 NOT FOUND]`, `[500 SERVER ERROR]`) with color-coded status prefixes.
 * **Structured Log Formatting & Request Indexing**: Implemented request sequence tracking (`[Req #N]`), timestamping, and standard severity markers (`[INFO]`, `[DEBUG]`, `[WARN]`, `[ERROR]`).
+* **Modular Refactor for Maintainability**: Extracted router building, logging, and file-visibility behaviors into dedicated helper modules under `src/serverHelpers/`.
 
 ### Version 1.1.5
 * **Hot Server Restart for .env Files**: Added automatic PHP process restart when modifying `.env` or related environment files to force PHP to load updated configuration values.

@@ -28,6 +28,12 @@ Phive now initializes its dedicated VS Code OutputChannel using the native `"log
 `vscode.window.createOutputChannel("Phive Server Logs", "log")`.
 This enables VS Code's built-in log syntax highlighter to dynamically colorize output tags and status lines across both **Light** and **Dark** editor themes without third-party extensions.
 
+### Modular Architecture Refactor (v1.1.6)
+The server manager has been split into focused helper modules to keep the extension easier to maintain:
+* `src/serverHelpers/routerBuilder.ts` generates the temporary PHP router.
+* `src/serverHelpers/serverLogger.ts` formats HTTP logs and request counters.
+* `src/serverHelpers/fileVisibility.ts` manages the VS Code `files.exclude` state for the temporary router.
+
 ### HTTP Status Code Parsing & Colorization
 Incoming log streams from the PHP CLI development server stderr output are intercepted and analyzed in real time. Phive extracts status codes (2xx, 3xx, 4xx, 5xx) via regular expression matching and formats each entry with standard severity prefixes and status descriptors:
 * **2xx (Success)**: Formatted as `[INFO] [200 OK]` — renders in **Green** in VS Code log grammar.
@@ -159,12 +165,16 @@ Phive is built on a modular TypeScript architecture consisting of four core modu
 #### `src/serverManager.ts` (`PHPStackManager` Class)
 * Spawns and manages the underlying PHP CLI child process (`child_process.spawn`).
 * **Output Channel Initialization (v1.1.6)**: Instantiates `vscode.window.createOutputChannel("Phive Server Logs", "log")` to enable native log language syntax highlighting.
-* **HTTP Log Formatting Engine (v1.1.6)**: Implements `formatHttpLog(rawLog, time)` to analyze stderr data, extract HTTP status codes with regex `/\b([1-5]\d\d)\b/`, and prefix entries with colorized tags (`[200 OK]`, `[302 REDIRECT]`, `[404 NOT FOUND]`, `[500 SERVER ERROR]`).
-* Tracks incoming connection counts via `_requestCount` and formats initial request logs (`[INFO] [Req #1] ...`).
+* Delegates HTTP log formatting to `ServerLogger` and router generation to the helper modules under `src/serverHelpers/`.
 * Generates a temporary router script (`.phive_router.php`) in the project root.
 * Automatically updates VS Code's `files.exclude` workspace settings to hide `.phive_router.php` from the file explorer.
 * Intercepts PHP document output and injects client-side WebSocket live-reload JavaScript prior to the closing `</body>` tag.
 * Maintains session parameters (`_lastServerParams`) to support seamless hot-restarts without resetting ports.
+
+#### `src/serverHelpers/` (Maintenance Helpers)
+* `routerBuilder.ts` builds the temporary PHP router content used to inject the live-reload script.
+* `serverLogger.ts` formats log entries, request counters, and severity markers for the output channel.
+* `fileVisibility.ts` ensures the temporary router remains hidden from the VS Code explorer when needed.
 
 #### `src/liveReload.ts` (`LiveReloadServer` Class)
 * Instantiates a `ws` (WebSocket) server on the assigned WebSocket port.
@@ -230,7 +240,7 @@ Phive is built on a modular TypeScript architecture consisting of four core modu
 3. `PHPStackManager.restartServer()` is executed:
    * The existing PHP child process is killed gracefully without removing session metadata.
    * A new PHP process is spawned using identical parameters, forcing PHP to re-read environment files.
-4. Once restarted, `LiveReloadServer.broadcastReload()` sends a reload signal, refreshing connected browsers with updated environment variables active.
+4. The extension wires this callback through `lrServer.onEnvFileSaved`, then calls `phpManager.restartServer()` and `lrServer.broadcastReload()` to refresh connected browsers with updated environment variables active.
 
 ### 8.4 Clean Teardown Sequence
 
@@ -262,29 +272,14 @@ Phive includes a dedicated output log channel with theme-aware syntax colorizati
 | **Process Close** | `[DEBUG]` | `[DEBUG]` | **Dark / Muted Gray** |
 | **Server Lifecycle** | `[INFO] / [WARN]` | `[INFO] [Phive] Server started...` | **Theme Accent Color** |
 
-### Code Implementation (`src/serverManager.ts`)
+### Code Implementation (`src/serverHelpers/serverLogger.ts`)
 
 ```typescript
-private formatHttpLog(rawLog: string, time: string): string {
-    const statusCodeMatch = rawLog.match(/\b([1-5]\d\d)\b/);
-    
-    if (statusCodeMatch) {
-        const statusCode = parseInt(statusCodeMatch[1], 10);
-
-        if (statusCode >= 200 && statusCode < 300) {
-            return `[INFO] [${statusCode} OK] ${time} - ${rawLog}`;
-        } else if (statusCode >= 300 && statusCode < 400) {
-            return `[WARN] [${statusCode} REDIRECT] ${time} - ${rawLog}`;
-        } else if (statusCode >= 400 && statusCode < 500) {
-            return `[WARN] [${statusCode} NOT FOUND] ${time} - ${rawLog}`;
-        } else if (statusCode >= 500) {
-            return `[ERROR] [${statusCode} SERVER ERROR] ${time} - ${rawLog}`;
-        }
-    }
-
-    return `[LOG] ${time} - ${rawLog}`;
-}
+const logger = new ServerLogger(outputChannel);
+logger.logRequest(rawLog, time);
 ```
+
+The helper class formats the message according to status code range (`2xx`, `3xx`, `4xx`, `5xx`) and maintains the request counter used in the output channel.
 
 ### Sample Output Channel Session
 

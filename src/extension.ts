@@ -56,7 +56,16 @@ export function activate(context: vscode.ExtensionContext) {
 
             // Démarrage des serveurs avec les ports validés
             lrServer.start(wsPort);
-            phpManager.start(rootPath, "0.0.0.0", currentPort, wsPort, currentIp);
+            lrServer.onEnvFileSaved = async () => {
+                if (!isRunning) {
+                    return;
+                }
+
+                await phpManager.restartServer();
+                lrServer.broadcastReload();
+            };
+
+            await phpManager.start(rootPath, "0.0.0.0", currentPort, wsPort, currentIp);
             
             isRunning = true;
             updateStatusBar(currentIp, currentPort);
@@ -81,8 +90,8 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    let stopCommand = vscode.commands.registerCommand('phive.stopServer', () => {
-        phpManager.stop();
+    let stopCommand = vscode.commands.registerCommand('phive.stopServer', async () => {
+        await phpManager.stop();
         lrServer.stop();
         isRunning = false;
         updateStatusBar();
@@ -117,7 +126,7 @@ function updateStatusBar(ip?: string, port?: number) {
     }
 }
 
-export function deactivate() {
-    phpManager.stop();
+export async function deactivate() {
+    await phpManager.stop();
     lrServer.stop();
 }
