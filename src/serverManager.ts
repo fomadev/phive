@@ -69,7 +69,7 @@ export class PHPStackManager {
         try {
             fs.writeFileSync(this._routerPath, routerContent);
             // Masquer le fichier dans l'explorateur VS Code
-            await this._toggleFileVisibility(routerFileName, true);
+            await toggleFileVisibility(routerFileName, true);
         } catch (err) {
             vscode.window.showErrorMessage(`Failed to create router file: ${err}`);
             return;
@@ -93,19 +93,19 @@ export class PHPStackManager {
             this._logger.logInfo(`[INFO] ${data.toString().trim()}`);
         });
 
-        this._process.on('close', (code) => {
+        this._process.on('close', async (code) => {
             this._logger.logInfo(`[WARN] [Phive] Server stopped (Code: ${code})`);
-            this._cleanup();
+            await this._cleanup();
         });
 
-        this._process.on('error', (err: any) => {
+        this._process.on('error', async (err: any) => {
             const errorMsg = err.code === 'ENOENT' 
                 ? `PHP executable not found at "${phpBinary}". Check your Phive settings.`
                 : `PHP Error: ${err.message}`;
             
             this._logger.logInfo(`[ERROR] ${errorMsg}`);
             vscode.window.showErrorMessage(errorMsg);
-            this._cleanup();
+            await this._cleanup();
         });
     }
 
@@ -139,25 +139,25 @@ export class PHPStackManager {
     /**
      * Arrête le processus PHP, notifie l'utilisateur et nettoie les fichiers temporaires
      */
-    public stop() {
+    public async stop() {
         if (this._process) {
             this._process.kill();
             this._process = undefined;
             vscode.window.showInformationMessage("Phive server stopped.");
         }
         this._lastServerParams = undefined;
-        this._cleanup();
+        await this._cleanup();
     }
 
     /**
      * Supprime le fichier router et le réaffiche dans VS Code
      */
-    private _cleanup() {
+    private async _cleanup() {
         if (this._routerPath) {
             const routerFileName = path.basename(this._routerPath);
             
             // 1. Réafficher le fichier avant de le supprimer pour éviter les résidus de config
-            this._toggleFileVisibility(routerFileName, false);
+            await toggleFileVisibility(routerFileName, false);
 
             // 2. Suppression physique
             if (fs.existsSync(this._routerPath)) {
@@ -168,12 +168,5 @@ export class PHPStackManager {
                 }
             }
         }
-    }
-
-    /**
-     * Ajoute ou retire le fichier de la liste d'exclusion de VS Code
-     */
-    private async _toggleFileVisibility(fileName: string, hide: boolean) {
-        await toggleFileVisibility(fileName, hide);
     }
 }
