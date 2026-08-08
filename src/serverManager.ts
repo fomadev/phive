@@ -5,6 +5,7 @@ import * as path from 'path';
 import { buildRouterContent, getRouterFilePath } from './serverHelpers/routerBuilder';
 import { ServerLogger } from './serverHelpers/serverLogger';
 import { toggleFileVisibility } from './serverHelpers/fileVisibility';
+import { getOrGenerateSSLConfig } from './serverHelpers/sslManager';
 
 export class PHPStackManager {
     private _process: cp.ChildProcess | undefined;
@@ -14,6 +15,7 @@ export class PHPStackManager {
 
     // Métadonnées de session conservées pour permettre le redémarrage à chaud (v1.1.5)
     private _lastServerParams: {
+        context: vscode.ExtensionContext;
         rootPath: string;
         host: string;
         port: number;
@@ -28,28 +30,50 @@ export class PHPStackManager {
     }
 
     /**
-     * Démarre le serveur PHP avec un routeur personnalisé et le binaire configuré
+     * Démarre le serveur PHP avec un routeur personnalisé, le binaire configuré et le support HTTPS optionnel
      */
-    public async start(rootPath: string, host: string, port: number, wsPort: number, ip: string) {
+    public async start(
+        context: vscode.ExtensionContext,
+        rootPath: string,
+        host: string,
+        port: number,
+        wsPort: number,
+        ip: string
+    ) {
         // Enregistrer les paramètres de lancement actuels pour un éventuel restart (.env)
-        this._lastServerParams = { rootPath, host, port, wsPort, ip };
+        this._lastServerParams = { context, rootPath, host, port, wsPort, ip };
 
         this.stopProcessOnly(); 
         this._logger.reset();
 
-        // 1. Récupérer le chemin PHP depuis la configuration
+        // 1. Récupérer la configuration PHP et HTTPS
         const config = vscode.workspace.getConfiguration('phive');
         const phpBinary = config.get<string>('phpPath') || 'php';
+        const enableHTTPS = config.get<boolean>('enableHTTPS') || false;
 
         this._outputChannel.clear();
         this._outputChannel.show();
         this._logger.logInfo(`[INFO] [Phive] Attempting to start using: ${phpBinary}`);
 
-        // 2. Script JS à injecter (Live Reload)
+        let wsProtocol = 'ws';
+        let httpProtocol = 'http';
+
+        if (enableHTTPS) {
+            const sslConfig = await getOrGenerateSSLConfig(context);
+            if (!sslConfig) {
+                this._logger.logInfo(`[ERROR] [Phive] HTTPS activation aborted due to missing SSL certificates.`);
+                return;
+            }
+            wsProtocol = 'wss';
+            httpProtocol = 'https';
+            this._logger.logInfo(`[INFO] [Phive] Experimental HTTPS enabled using cert: ${sslConfig.certPath}`);
+        }
+
+        // 2. Script JS à injecter (Live Reload compatible WSS)
         const injectionScript = `
         <script>
             (function() {
-                const socket = new WebSocket('ws://${ip}:${wsPort}');
+                const socket = new WebSocket('${wsProtocol}://${ip}:${wsPort}');
                 socket.onmessage = (msg) => { 
                     if (msg.data === 'reload') {
                         console.log('Phive: Reloading...');
@@ -80,9 +104,9 @@ export class PHPStackManager {
             cwd: rootPath
         });
 
-        this._logger.logInfo(`[INFO] [Phive] Server started: http://${ip}:${port}`);
+        this._logger.logInfo(`[INFO] [Phive] Server started: ${httpProtocol}://${ip}:${port}`);
 
-        // 5. Gestion des logs et erreurs (v1.1.6 : Formatage coloré selon le statut HTTP)
+        // 5. Gestion des logs et erreurs
         this._process.stderr?.on('data', (data) => {
             const rawLog = data.toString().trim();
             const time = new Date().toLocaleTimeString();
@@ -110,20 +134,17 @@ export class PHPStackManager {
     }
 
     /**
-     * Redémarre à chaud le serveur PHP (Utile pour recharger les fichiers d'environnement .env)
+     * Redémarre à chaud le serveur PHP
      */
     public async restartServer() {
         if (!this._lastServerParams) {
             return;
         }
 
-        const { rootPath, host, port, wsPort, ip } = this._lastServerParams;
+        const { context, rootPath, host, port, wsPort, ip } = this._lastServerParams;
         
-        // Arrêt du processus sans afficher le message de fermeture définitive
         this.stopProcessOnly();
-
-        // Relance avec les mêmes paramètres de session
-        await this.start(rootPath, host, port, wsPort, ip);
+        await this.start(context, rootPath, host, port, wsPort, ip);
     }
 
     /**
@@ -156,10 +177,8 @@ export class PHPStackManager {
         if (this._routerPath) {
             const routerFileName = path.basename(this._routerPath);
             
-            // 1. Réafficher le fichier avant de le supprimer pour éviter les résidus de config
             await toggleFileVisibility(routerFileName, false);
 
-            // 2. Suppression physique
             if (fs.existsSync(this._routerPath)) {
                 try {
                     fs.unlinkSync(this._routerPath);
