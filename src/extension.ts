@@ -11,6 +11,7 @@ let lrServer = new LiveReloadServer();
 let isRunning = false;
 let currentIp: string = "";
 let currentPort: number = 0;
+let currentProtocol: string = "http";
 
 export function activate(context: vscode.ExtensionContext) {
     
@@ -36,9 +37,12 @@ export function activate(context: vscode.ExtensionContext) {
 
         currentIp = getLocalIPv4();
 
-        // 2. Récupération du port dynamique depuis les paramètres utilisateur (Défaut: 8000)
+        // 2. Récupération des configurations (Port et HTTPS)
         const config = vscode.workspace.getConfiguration('phive');
         const preferredPort = config.get<number>('port') || 8000;
+        const enableHTTPS = config.get<boolean>('enableHTTPS') || false;
+        
+        currentProtocol = enableHTTPS ? 'https' : 'http';
 
         try {
             // 3. Utilisation du port configuré comme point de départ pour portfinder
@@ -65,17 +69,18 @@ export function activate(context: vscode.ExtensionContext) {
                 lrServer.broadcastReload();
             };
 
-            await phpManager.start(rootPath, "0.0.0.0", currentPort, wsPort, currentIp);
+            // Transmettre "context" à phpManager.start()
+            await phpManager.start(context, rootPath, "0.0.0.0", currentPort, wsPort, currentIp);
             
             isRunning = true;
-            updateStatusBar(currentIp, currentPort);
+            updateStatusBar(currentIp, currentPort, currentProtocol);
 
-            // Ouverture du navigateur local
-            const url = `http://localhost:${currentPort}`;
+            // Ouverture du navigateur local avec le bon protocole
+            const url = `${currentProtocol}://localhost:${currentPort}`;
             open(url);
 
             // Message informatif principal
-            const networkUrl = `http://${currentIp}:${currentPort}`;
+            const networkUrl = `${currentProtocol}://${currentIp}:${currentPort}`;
             vscode.window.showInformationMessage(`✅ Phive Live: Server active on ${networkUrl}`);
             
             // Notification pour la connexion réseau/mobile
@@ -109,17 +114,17 @@ export function activate(context: vscode.ExtensionContext) {
 /**
  * Met à jour l'interface visuelle de la barre de statut
  */
-function updateStatusBar(ip?: string, port?: number) {
+function updateStatusBar(ip?: string, port?: number, protocol: string = 'http') {
     if (!isRunning) {
         statusBarItem.text = `$(play) Phive: Go Live`;
         statusBarItem.command = 'phive.startServer';
         statusBarItem.tooltip = "🚀 Start the PHP Live Reload server";
         statusBarItem.backgroundColor = undefined;
     } else {
-        // Affichage de l'IP et du Port réellement utilisés
+        // Affichage de l'IP, du Port et prise en compte du protocole dans le tooltip
         statusBarItem.text = `$(primitive-square) Phive: ${ip}:${port}`;
         statusBarItem.command = 'phive.stopServer';
-        statusBarItem.tooltip = `✅ Server active on http://${ip}:${port} (Click to stop)`;
+        statusBarItem.tooltip = `✅ Server active on ${protocol}://${ip}:${port} (Click to stop)`;
         
         // Couleur d'arrière-plan distinctive pour indiquer le statut actif
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
