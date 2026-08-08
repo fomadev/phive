@@ -5,15 +5,19 @@ import * as path from 'path';
 import { buildRouterContent, getRouterFilePath } from './serverHelpers/routerBuilder';
 import { ServerLogger } from './serverHelpers/serverLogger';
 import { toggleFileVisibility } from './serverHelpers/fileVisibility';
+import { getOrGenerateSSLConfig } from './serverHelpers/sslManager';
+import { HTTPSProxyServer } from './serverHelpers/httpsProxy';
 
 export class PHPStackManager {
     private _process: cp.ChildProcess | undefined;
     private _outputChannel: vscode.OutputChannel;
     private _logger: ServerLogger;
     private _routerPath: string | undefined;
+    private _httpsProxy: HTTPSProxyServer | undefined;
 
     // Métadonnées de session conservées pour permettre le redémarrage à chaud (v1.1.5)
     private _lastServerParams: {
+        context: vscode.ExtensionContext;
         rootPath: string;
         host: string;
         port: number;
@@ -28,28 +32,68 @@ export class PHPStackManager {
     }
 
     /**
-     * Démarre le serveur PHP avec un routeur personnalisé et le binaire configuré
+     * Démarre le serveur PHP avec un routeur personnalisé, le binaire configuré et le support HTTPS optionnel via Proxy
      */
-    public async start(rootPath: string, host: string, port: number, wsPort: number, ip: string) {
+    public async start(
+        context: vscode.ExtensionContext,
+        rootPath: string,
+        host: string,
+        port: number,
+        wsPort: number,
+        ip: string
+    ) {
         // Enregistrer les paramètres de lancement actuels pour un éventuel restart (.env)
-        this._lastServerParams = { rootPath, host, port, wsPort, ip };
+        this._lastServerParams = { context, rootPath, host, port, wsPort, ip };
 
         this.stopProcessOnly(); 
         this._logger.reset();
 
-        // 1. Récupérer le chemin PHP depuis la configuration
+        // 1. Récupérer la configuration PHP et HTTPS
         const config = vscode.workspace.getConfiguration('phive');
         const phpBinary = config.get<string>('phpPath') || 'php';
+        const enableHTTPS = config.get<boolean>('enableHTTPS') || false;
 
         this._outputChannel.clear();
         this._outputChannel.show();
         this._logger.logInfo(`[INFO] [Phive] Attempting to start using: ${phpBinary}`);
 
-        // 2. Script JS à injecter (Live Reload)
+        let wsProtocol = 'ws';
+        let httpProtocol = 'http';
+        let phpBindPort = port;
+
+        // 2. Configuration HTTPS via Proxy SSL si activé
+        if (enableHTTPS) {
+            const sslConfig = await getOrGenerateSSLConfig(context);
+            if (!sslConfig) {
+                this._logger.logInfo(`[ERROR] [Phive] HTTPS activation aborted due to missing SSL certificates.`);
+                return;
+            }
+
+            // En mode HTTPS, PHP tourne sur un port interne temporaire (port + 10)
+            phpBindPort = port + 10;
+            wsProtocol = 'wss';
+            httpProtocol = 'https';
+
+            try {
+                this._httpsProxy = new HTTPSProxyServer();
+                // Transmettre wsPort au proxy pour autoriser l'upgrade WSS -> WS
+                await this._httpsProxy.start(sslConfig, port, phpBindPort, wsPort);
+                this._logger.logInfo(`[INFO] [Phive] Experimental HTTPS Proxy listening on ${httpProtocol}://${ip}:${port}`);
+            } catch (proxyErr) {
+                this._logger.logInfo(`[ERROR] [Phive] Failed to start HTTPS Proxy: ${proxyErr}`);
+                vscode.window.showErrorMessage(`Phive HTTPS Proxy error: ${proxyErr}`);
+                return;
+            }
+        }
+
+        // 3. Déterminer le port cible pour le Live Reload (Port proxy si HTTPS, port WS dédié si HTTP)
+        const liveReloadPort = enableHTTPS ? port : wsPort;
+
+        // Script JS à injecter
         const injectionScript = `
         <script>
             (function() {
-                const socket = new WebSocket('ws://${ip}:${wsPort}');
+                const socket = new WebSocket('${wsProtocol}://${ip}:${liveReloadPort}');
                 socket.onmessage = (msg) => { 
                     if (msg.data === 'reload') {
                         console.log('Phive: Reloading...');
@@ -61,7 +105,7 @@ export class PHPStackManager {
             })();
         </script>`.replace(/\n/g, ''); 
 
-        // 3. Création du fichier Router PHP temporaire
+        // 4. Création du fichier Router PHP temporaire
         const routerFileName = '.phive_router.php';
         this._routerPath = getRouterFilePath(rootPath);
         const routerContent = buildRouterContent(injectionScript);
@@ -75,14 +119,16 @@ export class PHPStackManager {
             return;
         }
 
-        // 4. Lancer le serveur avec le binaire personnalisé
-        this._process = cp.spawn(phpBinary, ['-S', `${host}:${port}`, this._routerPath], {
+        // 5. Lancement du processus PHP CLI
+        // Si HTTPS est activé, PHP écoute localement (127.0.0.1) sur le port interne, sinon il s'expose sur l'adresse externe (0.0.0.0)
+        const bindHost = enableHTTPS ? '127.0.0.1' : host;
+        this._process = cp.spawn(phpBinary, ['-S', `${bindHost}:${phpBindPort}`, this._routerPath], {
             cwd: rootPath
         });
 
-        this._logger.logInfo(`[INFO] [Phive] Server started: http://${ip}:${port}`);
+        this._logger.logInfo(`[INFO] [Phive] Server active: ${httpProtocol}://${ip}:${port}`);
 
-        // 5. Gestion des logs et erreurs (v1.1.6 : Formatage coloré selon le statut HTTP)
+        // 6. Gestion des logs et erreurs du processus PHP
         this._process.stderr?.on('data', (data) => {
             const rawLog = data.toString().trim();
             const time = new Date().toLocaleTimeString();
@@ -110,26 +156,25 @@ export class PHPStackManager {
     }
 
     /**
-     * Redémarre à chaud le serveur PHP (Utile pour recharger les fichiers d'environnement .env)
+     * Redémarre à chaud le serveur PHP
      */
     public async restartServer() {
         if (!this._lastServerParams) {
             return;
         }
-
-        const { rootPath, host, port, wsPort, ip } = this._lastServerParams;
-        
-        // Arrêt du processus sans afficher le message de fermeture définitive
+        const { context, rootPath, host, port, wsPort, ip } = this._lastServerParams;
         this.stopProcessOnly();
-
-        // Relance avec les mêmes paramètres de session
-        await this.start(rootPath, host, port, wsPort, ip);
+        await this.start(context, rootPath, host, port, wsPort, ip);
     }
 
     /**
-     * Arrête uniquement le processus enfant PHP en arrière-plan sans déclencher de notification
+     * Arrête uniquement le proxy et le processus enfant PHP en arrière-plan sans déclencher de notification
      */
     private stopProcessOnly() {
+        if (this._httpsProxy) {
+            this._httpsProxy.stop();
+            this._httpsProxy = undefined;
+        }
         if (this._process) {
             this._process.kill();
             this._process = undefined;
@@ -137,14 +182,11 @@ export class PHPStackManager {
     }
 
     /**
-     * Arrête le processus PHP, notifie l'utilisateur et nettoie les fichiers temporaires
+     * Arrête le serveur, notifie l'utilisateur et nettoie les fichiers temporaires
      */
     public async stop() {
-        if (this._process) {
-            this._process.kill();
-            this._process = undefined;
-            vscode.window.showInformationMessage("Phive server stopped.");
-        }
+        this.stopProcessOnly();
+        vscode.window.showInformationMessage("Phive server stopped.");
         this._lastServerParams = undefined;
         await this._cleanup();
     }
@@ -155,11 +197,8 @@ export class PHPStackManager {
     private async _cleanup() {
         if (this._routerPath) {
             const routerFileName = path.basename(this._routerPath);
-            
-            // 1. Réafficher le fichier avant de le supprimer pour éviter les résidus de config
             await toggleFileVisibility(routerFileName, false);
 
-            // 2. Suppression physique
             if (fs.existsSync(this._routerPath)) {
                 try {
                     fs.unlinkSync(this._routerPath);
