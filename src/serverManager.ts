@@ -76,7 +76,8 @@ export class PHPStackManager {
 
             try {
                 this._httpsProxy = new HTTPSProxyServer();
-                await this._httpsProxy.start(sslConfig, port, phpBindPort);
+                // Transmettre wsPort au proxy pour autoriser l'upgrade WSS -> WS
+                await this._httpsProxy.start(sslConfig, port, phpBindPort, wsPort);
                 this._logger.logInfo(`[INFO] [Phive] Experimental HTTPS Proxy listening on ${httpProtocol}://${ip}:${port}`);
             } catch (proxyErr) {
                 this._logger.logInfo(`[ERROR] [Phive] Failed to start HTTPS Proxy: ${proxyErr}`);
@@ -85,11 +86,14 @@ export class PHPStackManager {
             }
         }
 
-        // 3. Script JS à injecter (Live Reload compatible WS/WSS)
+        // 3. Déterminer le port cible pour le Live Reload (Port proxy si HTTPS, port WS dédié si HTTP)
+        const liveReloadPort = enableHTTPS ? port : wsPort;
+
+        // Script JS à injecter
         const injectionScript = `
         <script>
             (function() {
-                const socket = new WebSocket('${wsProtocol}://${ip}:${wsPort}');
+                const socket = new WebSocket('${wsProtocol}://${ip}:${liveReloadPort}');
                 socket.onmessage = (msg) => { 
                     if (msg.data === 'reload') {
                         console.log('Phive: Reloading...');
