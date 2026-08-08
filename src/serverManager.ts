@@ -6,12 +6,14 @@ import { buildRouterContent, getRouterFilePath } from './serverHelpers/routerBui
 import { ServerLogger } from './serverHelpers/serverLogger';
 import { toggleFileVisibility } from './serverHelpers/fileVisibility';
 import { getOrGenerateSSLConfig } from './serverHelpers/sslManager';
+import { HTTPSProxyServer } from './serverHelpers/httpsProxy';
 
 export class PHPStackManager {
     private _process: cp.ChildProcess | undefined;
     private _outputChannel: vscode.OutputChannel;
     private _logger: ServerLogger;
     private _routerPath: string | undefined;
+    private _httpsProxy: HTTPSProxyServer | undefined;
 
     // Métadonnées de session conservées pour permettre le redémarrage à chaud (v1.1.5)
     private _lastServerParams: {
@@ -30,7 +32,7 @@ export class PHPStackManager {
     }
 
     /**
-     * Démarre le serveur PHP avec un routeur personnalisé, le binaire configuré et le support HTTPS optionnel
+     * Démarre le serveur PHP avec un routeur personnalisé, le binaire configuré et le support HTTPS optionnel via Proxy
      */
     public async start(
         context: vscode.ExtensionContext,
@@ -57,19 +59,33 @@ export class PHPStackManager {
 
         let wsProtocol = 'ws';
         let httpProtocol = 'http';
+        let phpBindPort = port;
 
+        // 2. Configuration HTTPS via Proxy SSL si activé
         if (enableHTTPS) {
             const sslConfig = await getOrGenerateSSLConfig(context);
             if (!sslConfig) {
                 this._logger.logInfo(`[ERROR] [Phive] HTTPS activation aborted due to missing SSL certificates.`);
                 return;
             }
+
+            // En mode HTTPS, PHP tourne sur un port interne temporaire (port + 10)
+            phpBindPort = port + 10;
             wsProtocol = 'wss';
             httpProtocol = 'https';
-            this._logger.logInfo(`[INFO] [Phive] Experimental HTTPS enabled using cert: ${sslConfig.certPath}`);
+
+            try {
+                this._httpsProxy = new HTTPSProxyServer();
+                await this._httpsProxy.start(sslConfig, port, phpBindPort);
+                this._logger.logInfo(`[INFO] [Phive] Experimental HTTPS Proxy listening on ${httpProtocol}://${ip}:${port}`);
+            } catch (proxyErr) {
+                this._logger.logInfo(`[ERROR] [Phive] Failed to start HTTPS Proxy: ${proxyErr}`);
+                vscode.window.showErrorMessage(`Phive HTTPS Proxy error: ${proxyErr}`);
+                return;
+            }
         }
 
-        // 2. Script JS à injecter (Live Reload compatible WSS)
+        // 3. Script JS à injecter (Live Reload compatible WS/WSS)
         const injectionScript = `
         <script>
             (function() {
@@ -85,7 +101,7 @@ export class PHPStackManager {
             })();
         </script>`.replace(/\n/g, ''); 
 
-        // 3. Création du fichier Router PHP temporaire
+        // 4. Création du fichier Router PHP temporaire
         const routerFileName = '.phive_router.php';
         this._routerPath = getRouterFilePath(rootPath);
         const routerContent = buildRouterContent(injectionScript);
@@ -99,14 +115,16 @@ export class PHPStackManager {
             return;
         }
 
-        // 4. Lancer le serveur avec le binaire personnalisé
-        this._process = cp.spawn(phpBinary, ['-S', `${host}:${port}`, this._routerPath], {
+        // 5. Lancement du processus PHP CLI
+        // Si HTTPS est activé, PHP écoute localement (127.0.0.1) sur le port interne, sinon il s'expose sur l'adresse externe (0.0.0.0)
+        const bindHost = enableHTTPS ? '127.0.0.1' : host;
+        this._process = cp.spawn(phpBinary, ['-S', `${bindHost}:${phpBindPort}`, this._routerPath], {
             cwd: rootPath
         });
 
-        this._logger.logInfo(`[INFO] [Phive] Server started: ${httpProtocol}://${ip}:${port}`);
+        this._logger.logInfo(`[INFO] [Phive] Server active: ${httpProtocol}://${ip}:${port}`);
 
-        // 5. Gestion des logs et erreurs
+        // 6. Gestion des logs et erreurs du processus PHP
         this._process.stderr?.on('data', (data) => {
             const rawLog = data.toString().trim();
             const time = new Date().toLocaleTimeString();
@@ -140,17 +158,19 @@ export class PHPStackManager {
         if (!this._lastServerParams) {
             return;
         }
-
         const { context, rootPath, host, port, wsPort, ip } = this._lastServerParams;
-        
         this.stopProcessOnly();
         await this.start(context, rootPath, host, port, wsPort, ip);
     }
 
     /**
-     * Arrête uniquement le processus enfant PHP en arrière-plan sans déclencher de notification
+     * Arrête uniquement le proxy et le processus enfant PHP en arrière-plan sans déclencher de notification
      */
     private stopProcessOnly() {
+        if (this._httpsProxy) {
+            this._httpsProxy.stop();
+            this._httpsProxy = undefined;
+        }
         if (this._process) {
             this._process.kill();
             this._process = undefined;
@@ -158,14 +178,11 @@ export class PHPStackManager {
     }
 
     /**
-     * Arrête le processus PHP, notifie l'utilisateur et nettoie les fichiers temporaires
+     * Arrête le serveur, notifie l'utilisateur et nettoie les fichiers temporaires
      */
     public async stop() {
-        if (this._process) {
-            this._process.kill();
-            this._process = undefined;
-            vscode.window.showInformationMessage("Phive server stopped.");
-        }
+        this.stopProcessOnly();
+        vscode.window.showInformationMessage("Phive server stopped.");
         this._lastServerParams = undefined;
         await this._cleanup();
     }
@@ -176,7 +193,6 @@ export class PHPStackManager {
     private async _cleanup() {
         if (this._routerPath) {
             const routerFileName = path.basename(this._routerPath);
-            
             await toggleFileVisibility(routerFileName, false);
 
             if (fs.existsSync(this._routerPath)) {
