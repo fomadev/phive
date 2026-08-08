@@ -97,7 +97,7 @@
   },
   "devDependencies": {
     "@types/node": "18.x",
-    "@types/selfsigned": "^2.0.4",
+    "@types/selfsigned": "^2.1.0",
     "@types/vscode": "^1.80.0",
     "@types/ws": "^8.5.5",
     "ts-loader": "^9.4.4",
