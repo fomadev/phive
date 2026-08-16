@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as portfinder from 'portfinder';
 import { buildRouterContent, getRouterFilePath } from './serverHelpers/routerBuilder';
 import { ServerLogger } from './serverHelpers/serverLogger';
 import { toggleFileVisibility } from './serverHelpers/fileVisibility';
@@ -69,8 +70,18 @@ export class PHPStackManager {
                 return;
             }
 
-            // En mode HTTPS, PHP tourne sur un port interne temporaire (port + 10)
-            phpBindPort = port + 10;
+            // En mode HTTPS, PHP tourne sur un port interne temporaire.
+            // On utilise portfinder pour garantir que le port est libre (port+10 peut être occupé).
+            let candidatePhpPort = port + 10;
+            // Éviter toute collision avec le port WebSocket ou le port public
+            if (candidatePhpPort === wsPort || candidatePhpPort === port) {
+                candidatePhpPort++;
+            }
+            phpBindPort = await portfinder.getPortPromise({ port: candidatePhpPort });
+            if (phpBindPort !== candidatePhpPort) {
+                this._logger.logInfo(`[WARN] [Phive] Internal PHP port ${candidatePhpPort} was occupied. Switched to ${phpBindPort}.`);
+            }
+
             wsProtocol = 'wss';
             httpProtocol = 'https';
 
@@ -89,11 +100,16 @@ export class PHPStackManager {
         // 3. Déterminer le port cible pour le Live Reload (Port proxy si HTTPS, port WS dédié si HTTP)
         const liveReloadPort = enableHTTPS ? port : wsPort;
 
-        // Script JS à injecter
+        // Script JS à injecter.
+        // On utilise window.location.hostname plutôt que l'IP du serveur, pour que la WS
+        // se connecte toujours sur l'hôte depuis lequel le navigateur a ouvert la page
+        // (localhost si accès local, IP LAN si accès mobile). Cela évite les erreurs de
+        // connexion WS quand l'IP LAN est injoignable depuis localhost (ex: adaptateur VirtualBox).
         const injectionScript = `
         <script>
             (function() {
-                const socket = new WebSocket('${wsProtocol}://${ip}:${liveReloadPort}');
+                const _phiveHost = window.location.hostname;
+                const socket = new WebSocket('${wsProtocol}://' + _phiveHost + ':${liveReloadPort}');
                 socket.onmessage = (msg) => { 
                     if (msg.data === 'reload') {
                         console.log('Phive: Reloading...');

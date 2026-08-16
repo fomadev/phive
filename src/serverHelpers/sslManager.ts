@@ -18,13 +18,27 @@ export async function getOrGenerateSSLConfig(context: vscode.ExtensionContext): 
 
     // 1. Si l'utilisateur a spécifié ses propres certificats
     if (customCert && customKey) {
-        if (fs.existsSync(customCert) && fs.existsSync(customKey)) {
+        // Résoudre les chemins relatifs par rapport à la racine du workspace,
+        // car VS Code ne garantit pas que le CWD du processus est le dossier du projet.
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const resolvedCert = path.isAbsolute(customCert)
+            ? customCert
+            : workspaceRoot ? path.resolve(workspaceRoot, customCert) : customCert;
+        const resolvedKey = path.isAbsolute(customKey)
+            ? customKey
+            : workspaceRoot ? path.resolve(workspaceRoot, customKey) : customKey;
+
+        if (fs.existsSync(resolvedCert) && fs.existsSync(resolvedKey)) {
             return {
-                certPath: customCert,
-                keyPath: customKey
+                certPath: resolvedCert,
+                keyPath: resolvedKey
             };
         } else {
-            vscode.window.showErrorMessage(`[Phive SSL] Fichiers SSL introuvables aux chemins spécifiés : ${customCert} ou ${customKey}`);
+            vscode.window.showErrorMessage(
+                `[Phive SSL] Fichiers SSL introuvables :\n` +
+                `  Cert : ${resolvedCert}\n` +
+                `  Clé  : ${resolvedKey}`
+            );
             return null;
         }
     }
@@ -59,25 +73,29 @@ export async function getOrGenerateSSLConfig(context: vscode.ExtensionContext): 
 }
 
 /**
- * Génère un certificat auto-signé à l'aide de 'selfsigned' ou d'OpenSSL CLI
+ * Génère un certificat auto-signé à l'aide de 'selfsigned' ou d'OpenSSL CLI.
+ * Note: selfsigned v5+ expose une API async — generate() retourne une Promise.
  */
 async function generateSelfSignedCertificate(certPath: string, keyPath: string): Promise<boolean> {
-    return new Promise((resolve) => {
-        try {
-            // Tente d'utiliser le package npm 'selfsigned' s'il est présent dans vos dépendances
-            const selfsigned = require('selfsigned');
-            const attrs = [{ name: 'commonName', value: 'localhost' }];
-            const pkey = selfsigned.generate(attrs, { days: 365, keySize: 2048 });
+    // 1. Tentative via le package npm 'selfsigned' (async depuis la v5)
+    try {
+        const selfsigned = require('selfsigned');
+        const attrs = [{ name: 'commonName', value: 'localhost' }];
+        // selfsigned.generate() est async depuis v5 — on doit l'attendre
+        const pkey = await selfsigned.generate(attrs, { days: 365, keySize: 2048 });
 
-            fs.writeFileSync(certPath, pkey.cert, { encoding: 'utf8' });
-            fs.writeFileSync(keyPath, pkey.private, { encoding: 'utf8' });
+        if (!pkey?.cert || !pkey?.private) {
+            throw new Error('selfsigned returned empty cert or private key');
+        }
 
-            resolve(true);
-            return;
-        } catch {
-            // Fallback : tentative via l'utilitaire OpenSSL CLI du système
-            const cmd = `openssl req -x509 -newkey rsa:2048 -nodes -keyout "${keyPath}" -out "${certPath}" -days 365 -subj "/CN=localhost"`;
+        fs.writeFileSync(certPath, pkey.cert, { encoding: 'utf8' });
+        fs.writeFileSync(keyPath, pkey.private, { encoding: 'utf8' });
+        return true;
+    } catch {
+        // 2. Fallback : tentative via l'utilitaire OpenSSL CLI du système
+        const cmd = `openssl req -x509 -newkey rsa:2048 -nodes -keyout "${keyPath}" -out "${certPath}" -days 365 -subj "/CN=localhost"`;
 
+        return new Promise((resolve) => {
             cp.exec(cmd, (error) => {
                 if (error) {
                     vscode.window.showErrorMessage(
@@ -88,6 +106,6 @@ async function generateSelfSignedCertificate(certPath: string, keyPath: string):
                     resolve(true);
                 }
             });
-        }
-    });
+        });
+    }
 }
