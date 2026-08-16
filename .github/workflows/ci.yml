@@ -2,7 +2,7 @@ name: Continuous Integration
 
 on:
   push:
-    branches: [ main, master, update/typescript ]
+    branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
 
