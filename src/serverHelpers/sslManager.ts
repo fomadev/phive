@@ -18,13 +18,27 @@ export async function getOrGenerateSSLConfig(context: vscode.ExtensionContext): 
 
     // 1. Si l'utilisateur a spécifié ses propres certificats
     if (customCert && customKey) {
-        if (fs.existsSync(customCert) && fs.existsSync(customKey)) {
+        // Résoudre les chemins relatifs par rapport à la racine du workspace,
+        // car VS Code ne garantit pas que le CWD du processus est le dossier du projet.
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const resolvedCert = path.isAbsolute(customCert)
+            ? customCert
+            : workspaceRoot ? path.resolve(workspaceRoot, customCert) : customCert;
+        const resolvedKey = path.isAbsolute(customKey)
+            ? customKey
+            : workspaceRoot ? path.resolve(workspaceRoot, customKey) : customKey;
+
+        if (fs.existsSync(resolvedCert) && fs.existsSync(resolvedKey)) {
             return {
-                certPath: customCert,
-                keyPath: customKey
+                certPath: resolvedCert,
+                keyPath: resolvedKey
             };
         } else {
-            vscode.window.showErrorMessage(`[Phive SSL] Fichiers SSL introuvables aux chemins spécifiés : ${customCert} ou ${customKey}`);
+            vscode.window.showErrorMessage(
+                `[Phive SSL] Fichiers SSL introuvables :\n` +
+                `  Cert : ${resolvedCert}\n` +
+                `  Clé  : ${resolvedKey}`
+            );
             return null;
         }
     }
