@@ -86,6 +86,13 @@ export class HTTPSProxyServer {
 
                 this._server.on('error', (err) => reject(err));
 
+                // Intercepter les erreurs de handshake TLS pour éviter les fuites silencieuses.
+                // Sans ce handler, les échecs TLS sont ignorés et la socket reste indéfinie.
+                this._server.on('tlsClientError', (err: Error, socket: net.Socket) => {
+                    console.error('[Phive TLS Error] Handshake failed:', err.message);
+                    socket.destroy();
+                });
+
                 this._server.listen(publicPort, '0.0.0.0', () => {
                     resolve();
                 });

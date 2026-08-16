@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as portfinder from 'portfinder';
 import { buildRouterContent, getRouterFilePath } from './serverHelpers/routerBuilder';
 import { ServerLogger } from './serverHelpers/serverLogger';
 import { toggleFileVisibility } from './serverHelpers/fileVisibility';
@@ -69,8 +70,18 @@ export class PHPStackManager {
                 return;
             }
 
-            // En mode HTTPS, PHP tourne sur un port interne temporaire (port + 10)
-            phpBindPort = port + 10;
+            // En mode HTTPS, PHP tourne sur un port interne temporaire.
+            // On utilise portfinder pour garantir que le port est libre (port+10 peut être occupé).
+            let candidatePhpPort = port + 10;
+            // Éviter toute collision avec le port WebSocket ou le port public
+            if (candidatePhpPort === wsPort || candidatePhpPort === port) {
+                candidatePhpPort++;
+            }
+            phpBindPort = await portfinder.getPortPromise({ port: candidatePhpPort });
+            if (phpBindPort !== candidatePhpPort) {
+                this._logger.logInfo(`[WARN] [Phive] Internal PHP port ${candidatePhpPort} was occupied. Switched to ${phpBindPort}.`);
+            }
+
             wsProtocol = 'wss';
             httpProtocol = 'https';
 
