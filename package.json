@@ -107,7 +107,7 @@
   },
   "dependencies": {
     "ip-address": "^10.4.0",
-    "open": "^11.0.0",
+    "open": "^11.0.1",
     "portfinder": "^1.0.38",
     "selfsigned": "^5.5.0",
     "ws": "^8.21.2"
