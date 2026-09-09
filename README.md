@@ -80,6 +80,23 @@ For comprehensive technical guides, execution flows, and troubleshooting instruc
 
 ---
 
+## Changelog
+
+### v1.2.1
+* **Dependency Upgrades & Security**:
+  * Bumped `open` to `11.0.1` ([#28](https://github.com/fomadev/phive/pull/28)) for resilient cross-platform browser launching.
+  * Bumped `ip-address` to `10.7.0` ([#29](https://github.com/fomadev/phive/pull/29)) for IP address calculation and network interfaces.
+  * Bumped `ws` to `8.21.3` ([#30](https://github.com/fomadev/phive/pull/30)) for WebSocket live-reload stability and performance.
+  * Bumped dev dependency `@types/node` to `26.3.0` ([#32](https://github.com/fomadev/phive/pull/32)).
+* **Maintenance**: Version increment to `v1.2.1`, build validation, and documentation updates.
+
+### v1.2.0
+* **Dual Operation Modes**: Added HTTPS mode via integrated Node.js reverse proxy with TLS termination alongside standard HTTP mode.
+* **SSL Certificate Management**: Support for custom `.crt`/`.key` files and automatic 2048-bit RSA self-signed certificate generation.
+* **Dynamic WebSocket Host Resolution**: Runtime client resolution using `window.location.hostname` for seamless LAN and WiFi testing.
+
+---
+
 ## Contributing
 
 Contributions must comply with project governance. Please review [CONTRIBUTING.md](CONTRIBUTING.md) prior to submitting pull requests or opening issues.
