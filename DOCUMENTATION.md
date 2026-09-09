@@ -1,4 +1,4 @@
-# Phive (PHP Live Server) v1.2.0: Technical Documentation and User Guide
+# Phive (PHP Live Server) v1.2.1: Technical Documentation and User Guide
 
 ---
 
@@ -83,7 +83,7 @@ Phive utilizes `portfinder` to verify the availability of the HTTP/HTTPS port (d
 ### Installation from VSIX Package
 1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
 2. Select **Extensions: Install from VSIX...**.
-3. Choose the `.vsix` package file (e.g., `phive-1.2.0.vsix`) and confirm installation.
+3. Choose the `.vsix` package file (e.g., `phive-1.2.1.vsix`) and confirm installation.
 
 ---
 
@@ -365,4 +365,27 @@ Phive is licensed under the **FomaDev Public License (FPL)**.
 
 ---
 
-Document updated for **Phive v1.2.0** by **FomaDev**.
+## 12. Release History and Changelog
+
+### v1.2.1 (Current Release)
+* **Dependency Upgrades & Maintenance**:
+  * Bump `open` from `11.0.0` to `11.0.1` ([#28](https://github.com/fomadev/phive/pull/28)): Improved reliable browser process launching across host operating systems.
+  * Bump `ip-address` from `10.4.0` to `10.7.0` ([#29](https://github.com/fomadev/phive/pull/29)): Updated network IP address parsing and validation engine.
+  * Bump `ws` from `8.21.2` to `8.21.3` ([#30](https://github.com/fomadev/phive/pull/30)): WebSocket protocol stability, connection handling, and security updates for the live reload engine.
+  * Bump dev dependency `@types/node` from `26.2.0` to `26.3.0` ([#32](https://github.com/fomadev/phive/pull/32)): Synchronized TypeScript definitions with Node.js runtime.
+* **Documentation & Versioning**:
+  * Synchronized all technical specifications, packaging guides, and configuration references to version `1.2.1`.
+
+### v1.2.0
+* **Dual Protocol Architecture (HTTPS Reverse Proxy)**:
+  * Integrated Node.js HTTPS reverse proxy with TLS termination forwarding traffic to an internal PHP process.
+  * Added `phive.enableHTTPS`, `phive.sslCertPath`, and `phive.sslKeyPath` configuration settings.
+  * Built-in automatic self-signed 2048-bit RSA certificate generator with OpenSSL fallback and caching.
+* **Dynamic WebSocket Host Resolution**:
+  * Injected live-reload client resolves `window.location.hostname` dynamically at runtime for LAN/WiFi testing.
+* **TLS Resilience**:
+  * Implemented `tlsClientError` event listeners preventing proxy crashes during aborted or untrusted handshakes.
+
+---
+
+Document updated for **Phive v1.2.1** by **FomaDev**.
