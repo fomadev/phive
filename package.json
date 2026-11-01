@@ -106,7 +106,7 @@
     "webpack-cli": "^7.2.3"
   },
   "dependencies": {
-    "ip-address": "^10.7.0",
+    "ip-address": "^10.7.2",
     "open": "^11.0.2",
     "portfinder": "^1.0.38",
     "selfsigned": "^5.5.0",
