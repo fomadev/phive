@@ -99,7 +99,7 @@
     "@types/node": "26.x",
     "@types/selfsigned": "^2.1.0",
     "@types/vscode": "^1.80.0",
-    "@types/ws": "^8.5.5",
+    "@types/ws": "^8.18.2",
     "ts-loader": "^9.6.2",
     "typescript": "^6.0.3",
     "webpack": "^5.111.0",
@@ -110,6 +110,6 @@
     "open": "^11.0.2",
     "portfinder": "^1.0.38",
     "selfsigned": "^5.5.0",
-    "ws": "^8.21.3"
+    "ws": "^8.22.1"
   }
 }
